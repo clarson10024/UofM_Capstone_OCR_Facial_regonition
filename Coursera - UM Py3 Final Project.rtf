@@ -1,0 +1,109 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2512
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww21420\viewh17800\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 # Purpose of code is to (1) open a list of zip image files, (2) process the images with OCR, (3) do key word searches\
+# on processed text (4) extract images of faces from the files where key words are found, and (5) format those images\
+# for presentation.  It is also necessary to list files where key matches are found, but that do not have corresponding \
+# images of faces.\
+\
+import zipfile\
+from PIL import Image\
+import pytesseract\
+import cv2 as cv\
+import numpy as np\
+\
+# loading the face detection classifier\
+face_cascade = cv.CascadeClassifier('readonly/haarcascade_frontalface_default.xml')\
+\
+def check_text (SEARCH_PARM, img):\
+    \
+    # perform OCR with pytesseract\
+    \
+    return_text = pytesseract.image_to_string(img)\
+    \
+    # filter out special characters, returns, etc from OCR return_text and convert to lower case to create an easily\
+    # searchable string.  NOTE: all special characters and white space are removed, which makes matching more \
+    # senstive.  This code found key word matches for 'mark' in images a-5.png and a-9.png.  For the purposes of \
+    # this assigment, per Christopher Brooks comments in the dicussion forum, this should not matter.  All other \
+    # output does match his.\
+    \
+    alphanumeric_filter = filter(str.isalnum, return_text)\
+    text = "".join(alphanumeric_filter)\
+    search_string = text.lower()\
+\
+    if SEARCH_PARM.lower() in search_string:\
+#        print ("Found: ", SEARCH_PARM)\
+        return True\
+    else:\
+        return False\
+    \
+def get_faces (img):\
+    \
+    # attempt to ensure we're processing an RGB image\
+    RGB_img = img.convert("RGB")\
+    cvi=np.asarray(RGB_img)\
+    \
+    #convert to grey scale for facial recognition search\
+    gray = cv.cvtColor(cvi, cv.COLOR_BGR2GRAY)\
+\
+    #find the faces \
+    faces = face_cascade.detectMultiScale(gray, 1.3,5)\
+    \
+    #extract faces from the larger image\
+    pics = []\
+    for x, y, w, h in faces:\
+        face = img.crop((x,y,x+w,y+h))\
+        pics.append(face)\
+    return pics \
+    \
+def display_faces (faces):\
+    \
+    TN_SIZE = (100, 100)\
+    x = 0\
+    y = 0\
+    index = 1\
+  \
+    num_faces = len(faces)\
+    if num_faces % 5 == 0:\
+        num_rows = 1\
+    else:\
+        num_rows = num_faces / 5 + 1\
+\
+    faces_sheet = Image.new('RGB',(int(TN_SIZE[0]*5), int(TN_SIZE[1]*num_rows)))\
+    \
+    for face in faces:\
+        face.thumbnail(TN_SIZE)\
+        if index % 6 == 0:\
+            x = 0\
+            y += face.height\
+        faces_sheet.paste(face, (x,y))\
+        x += face.width\
+        index += 1\
+    \
+    display (faces_sheet)\
+    return\
+\
+# This is the 'main'section. It employs file oriented processing.  One file is read, checked and displayed.\
+# It loops until all files are processed. Kept it simple to avoid consuming memory. Also made tracking easier.\
+\
+SEARCH_PARM = input("Please enter a search parameter:  ")    \
+\
+with zipfile.ZipFile("readonly/images.zip") as archive:\
+    for entry in archive.infolist():\
+        print (entry.filename, "is being processed... \\n")\
+        images = []\
+        with archive.open(entry) as file:\
+            img = Image.open(file)\
+            if check_text(SEARCH_PARM, img.convert('L')):  # check_text returns False if parm is not found in text\
+                images = get_faces(img)\
+                print("Results found in file \{\} for search parameter: \{\}".format(entry.filename, SEARCH_PARM))            \
+                if images != []:\
+                    display_faces (images)\
+                else:\
+                    print("But there were no faces found in that file! \\n")\
+            # will skip to next file without printing anything to match desired output\
+}
